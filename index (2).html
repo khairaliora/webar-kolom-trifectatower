@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<!-- VERSI SIAP UNGGAH: index.html dan kolom_K1.glb diletakkan SEJAJAR (tanpa folder models/). -->
+<!--
+  ============================================================================
+  WEBAR KOLOM BETON BERTULANG  —  Template Siap Pakai
+  ----------------------------------------------------------------------------
+  Pustaka : Google <model-viewer> 4.3.0 (AR: WebXR / Scene Viewer / Quick Look)
+  Struktur folder yang diharapkan:
+      index.html                 <- file ini
+      models/kolom_K1.glb        <- model 3D Anda
+
+  BAGIAN YANG PERLU ANDA UBAH (cari tanda  >>> GANTI <<< ):
+    [1] Path file .glb           -> atribut src pada <model-viewer>
+    [2] (Opsional) file .usdz    -> atribut ios-src untuk iPhone
+    [3] Data spesifikasi kolom   -> objek KOLOM di dalam <script>
+    [4] Nama material di .glb    -> objek NAMA_MATERIAL di dalam <script>
+    [5] Langsung ke kamera AR    -> konstanta LANGSUNG_AR di dalam <script>
+  ============================================================================
+-->
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#1b2430" />
+  <title>WebAR Kolom K1 — Beton Bertulang</title>
+  <meta name="description" content="Visualisasi 3D dan Augmented Reality kolom beton bertulang beserta susunan tulangan utama dan sengkang." />
+
+  <!-- Pustaka model-viewer (versi dikunci agar tampilan stabil) -->
+  <script type="module" src="https://cdn.jsdelivr.net/npm/@google/model-viewer@4.3.0/dist/model-viewer.min.js"></script>
+
+  <style>
+    :root {
+      --bg-1: #eef1f4;
+      --bg-2: #d9dfe6;
+      --ink: #17202b;
+      --ink-2: #546171;
+      --line: #e3e7ec;
+      --card: #ffffff;
+      --accent: #1b2430;
+      --merah: #dc3a1a;   /* warna tulangan utama (samakan dengan model) */
+      --biru: #1a73e8;    /* warna sengkang (samakan dengan model)       */
+      --abu: #9aa3ad;     /* warna beton                                  */
+      --radius: 18px;
+      --safe-b: env(safe-area-inset-bottom, 0px);
+      --safe-t: env(safe-area-inset-top, 0px);
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body {
+      margin: 0; height: 100%; overflow: hidden;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      color: var(--ink);
+      background: radial-gradient(120% 80% at 50% 20%, var(--bg-1), var(--bg-2));
+    }
+
+    /* ---------- Penampil 3D (layar penuh) ---------- */
+    model-viewer {
+      /* Area 3D berhenti tepat di atas kartu (tinggi kartu diukur oleh JS) */
+      position: fixed; top: 0; left: 0; right: 0;
+      bottom: calc(var(--card-h, 300px) - 16px);
+      width: 100%; height: auto;
+      background: transparent;
+      --poster-color: transparent;
+      --progress-bar-color: transparent;
+    }
+
+    /* Progress bar saat model dimuat */
+    .progress {
+      position: absolute; top: calc(var(--safe-t) + 0px); left: 0; right: 0; height: 3px;
+      background: transparent; pointer-events: none;
+    }
+    .progress > span {
+      display: block; height: 100%; width: 0; background: var(--biru);
+      transition: width .2s ease, opacity .4s ease;
+    }
+    .progress.selesai > span { opacity: 0; }
+
+    /* ---------- Bilah atas ---------- */
+    .topbar {
+      position: fixed; z-index: 5;
+      top: calc(var(--safe-t) + 12px); left: 12px; right: 12px;
+      display: flex; align-items: center; gap: 10px;
+      pointer-events: none;
+    }
+    .judul {
+      pointer-events: auto;
+      background: rgba(27, 36, 48, .92); color: #fff;
+      padding: 9px 14px; border-radius: 14px;
+      backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+      min-width: 0;
+    }
+    .judul b { display: block; font-size: 15px; letter-spacing: .2px; }
+    .judul small { display: block; font-size: 11.5px; opacity: .75; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .spacer { flex: 1; }
+    .ikon-btn {
+      pointer-events: auto;
+      width: 42px; height: 42px; border-radius: 12px; border: 0;
+      background: rgba(255,255,255,.92); color: var(--ink);
+      display: grid; place-items: center; cursor: pointer;
+      box-shadow: 0 2px 10px rgba(0,0,0,.08);
+    }
+    .ikon-btn[aria-pressed="true"] { background: var(--accent); color: #fff; }
+    .ikon-btn svg { width: 20px; height: 20px; }
+
+    /* ---------- Tombol layer (on/off) ---------- */
+    .layers {
+      position: fixed; z-index: 5;
+      top: calc(var(--safe-t) + 70px); left: 12px; right: 12px;
+      display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none;
+    }
+    .layers::-webkit-scrollbar { display: none; }
+    .chip {
+      flex: 0 0 auto;
+      display: inline-flex; align-items: center; gap: 7px;
+      padding: 8px 12px; border-radius: 999px; border: 1px solid var(--line);
+      background: rgba(255,255,255,.92); color: var(--ink);
+      font: 600 12.5px/1 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; cursor: pointer;
+      box-shadow: 0 2px 8px rgba(0,0,0,.06);
+      transition: opacity .2s, background .2s;
+    }
+    .chip i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+    .chip[aria-pressed="false"] { opacity: .5; background: rgba(255,255,255,.7); }
+    .chip[aria-pressed="false"] i { background: transparent !important; outline: 2px solid currentColor; outline-offset: -2px; }
+
+    /* ---------- Label (hotspot) pada model ---------- */
+    .hotspot {
+      position: relative;
+      display: block; border: 0; padding: 0; background: none;
+      pointer-events: none;            /* label tidak menghalangi rotasi */
+      --min-hotspot-opacity: 0;
+    }
+    .hotspot .label {
+      display: inline-block; transform: translate(14px, -50%);
+      background: rgba(27,36,48,.9); color: #fff;
+      font: 600 11.5px/1.25 system-ui, sans-serif;
+      padding: 5px 8px; border-radius: 8px; white-space: nowrap;
+      border-left: 3px solid var(--warna, #fff);
+    }
+    .hotspot::before {
+      content: ""; position: absolute; left: -5px; top: -5px;
+      width: 10px; height: 10px; border-radius: 50%;
+      background: var(--warna, #fff); border: 2px solid #fff;
+      box-shadow: 0 0 0 1px rgba(0,0,0,.25);
+    }
+    .hotspot:not([data-visible]) { opacity: 0; }
+    model-viewer.tanpa-label .hotspot { display: none; }
+
+    /* ---------- Kartu informasi di bawah ---------- */
+    .card {
+      position: fixed; z-index: 6; left: 0; right: 0; bottom: 0;
+      margin: 0 auto; max-width: 560px;
+      background: var(--card);
+      border-radius: var(--radius) var(--radius) 0 0;
+      box-shadow: 0 -8px 30px rgba(15, 23, 42, .14);
+      padding: 6px 16px calc(14px + var(--safe-b));
+      max-height: 78vh; overflow-y: auto;
+      transition: transform .3s ease;
+    }
+    .handle {
+      display: block; width: 100%; border: 0; background: none; padding: 6px 0 8px; cursor: pointer;
+    }
+    .handle span { display: block; width: 42px; height: 5px; margin: 0 auto; border-radius: 3px; background: #cfd6de; }
+    .card-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+    .badge {
+      flex: 0 0 auto;
+      background: var(--accent); color: #fff; font-weight: 800; font-size: 15px;
+      width: 46px; height: 46px; border-radius: 12px; display: grid; place-items: center;
+    }
+    .card-head h1 { font-size: 17px; margin: 0; line-height: 1.2; }
+    .card-head p { margin: 2px 0 0; font-size: 12.5px; color: var(--ink-2); }
+
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .item {
+      background: #f5f7f9; border: 1px solid var(--line); border-radius: 12px; padding: 9px 11px;
+    }
+    .item .k { font-size: 11px; color: var(--ink-2); text-transform: uppercase; letter-spacing: .4px; }
+    .item .v { font-size: 16px; font-weight: 700; margin-top: 2px; }
+    .item .s { font-size: 11.5px; color: var(--ink-2); margin-top: 1px; }
+    .item.merah { border-left: 4px solid var(--merah); }
+    .item.biru  { border-left: 4px solid var(--biru); }
+
+    .btn-ar {
+      width: 100%; margin-top: 12px; border: 0; cursor: pointer;
+      display: flex; align-items: center; justify-content: center; gap: 10px;
+      padding: 14px 16px; border-radius: 14px;
+      background: var(--accent); color: #fff; font: 700 15.5px/1 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      box-shadow: 0 6px 18px rgba(27,36,48,.25);
+    }
+    .btn-ar svg { width: 22px; height: 22px; }
+    .btn-ar[hidden] { display: none; }
+    .info-desktop {
+      margin-top: 12px; padding: 10px 12px; border-radius: 12px;
+      background: #fff7e6; color: #7a4d00; font-size: 12.5px; line-height: 1.45;
+    }
+    .info-desktop[hidden] { display: none; }
+
+    .detail { display: none; margin-top: 14px; }
+    .card.buka .detail { display: block; }
+    .detail table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+    .detail caption { text-align: left; font-weight: 700; font-size: 13px; margin-bottom: 6px; }
+    .detail td { padding: 7px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+    .detail td:first-child { color: var(--ink-2); width: 48%; }
+    .detail td:last-child { font-weight: 600; text-align: right; }
+    .slider { margin-top: 14px; }
+    .slider label { display: flex; justify-content: space-between; font-size: 13px; font-weight: 600; }
+    .slider input { width: 100%; margin-top: 8px; accent-color: var(--accent); }
+    .catatan { font-size: 11.5px; color: var(--ink-2); margin: 12px 0 0; line-height: 1.45; }
+    .toggle-detail {
+      margin-top: 10px; width: 100%; border: 1px solid var(--line); background: #fff; color: var(--ink);
+      padding: 10px; border-radius: 12px; font: 600 13px/1 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; cursor: pointer;
+    }
+
+    /* ---------- Toast / pesan ---------- */
+    .toast {
+      position: fixed; z-index: 9; left: 50%; top: calc(var(--safe-t) + 120px);
+      transform: translateX(-50%);
+      background: #1b2430; color: #fff; padding: 10px 14px; border-radius: 12px;
+      font-size: 13px; max-width: 90vw; text-align: center;
+      opacity: 0; pointer-events: none; transition: opacity .3s;
+    }
+    .toast.tampil { opacity: 1; }
+
+    /* ---------- Layar pembuka "langsung kamera AR" (khusus HP) ---------- */
+    .layar-ar {
+      position: fixed; inset: 0; z-index: 20;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 18px; padding: 24px calc(24px) calc(24px + var(--safe-b));
+      background: rgba(18, 24, 32, .94); color: #fff; text-align: center;
+    }
+    .layar-ar[hidden] { display: none; }
+    .layar-ar .ikon { width: 84px; height: 84px; border-radius: 24px; background: rgba(255,255,255,.1); display: grid; place-items: center; }
+    .layar-ar .ikon svg { width: 46px; height: 46px; }
+    .layar-ar h2 { margin: 0; font-size: 21px; }
+    .layar-ar p { margin: 0; font-size: 14px; line-height: 1.5; opacity: .8; max-width: 320px; }
+    .layar-ar .mulai {
+      margin-top: 6px; width: min(320px, 100%); border: 0; cursor: pointer;
+      padding: 17px; border-radius: 16px; background: #fff; color: #1b2430;
+      font: 800 17px/1 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    .layar-ar .lewati { background: none; border: 0; color: #fff; opacity: .75; font: 600 14px/1 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; padding: 10px; cursor: pointer; text-decoration: underline; }
+
+    /* Layar lebar (laptop/tablet landscape): kartu di samping kanan */
+    @media (min-width: 900px) {
+      .card { left: auto; right: 16px; bottom: 16px; top: auto; width: 380px; border-radius: var(--radius); max-height: calc(100vh - 32px); }
+      model-viewer { bottom: 0; right: 400px; width: auto; }
+    }
+  </style>
+</head>
+<body>
+
+  <!--
+    ===================================================================
+    [1] >>> GANTI <<<  src="models/kolom_K1.glb"
+        Ganti dengan path file .glb Anda (relatif terhadap index.html).
+        PERHATIAN: GitHub Pages membedakan huruf besar/kecil.
+        "Kolom_K1.glb" ≠ "kolom_K1.glb". Hindari spasi pada nama file.
+
+    [2] >>> OPSIONAL <<<  ios-src="models/kolom_K1.usdz"
+        Jika tidak diisi, model-viewer otomatis membuat USDZ dari .glb
+        untuk AR Quick Look di iPhone. Isi hanya jika Anda punya .usdz
+        sendiri (mis. hasil Reality Converter) — hapus tanda komentar.
+    ===================================================================
+  -->
+  <model-viewer
+    id="mv"
+    src="kolom_K1.glb"
+    alt="Model 3D kolom beton bertulang K1 dengan tulangan utama dan sengkang"
+    ar
+    ar-modes="webxr scene-viewer quick-look"
+    ar-scale="auto"
+    ar-placement="floor"
+    camera-controls
+    touch-action="none"
+    camera-orbit="35deg 72deg auto"
+    min-camera-orbit="auto 5deg auto"
+    max-camera-orbit="auto 175deg auto"
+    interaction-prompt="auto"
+    auto-rotate
+    auto-rotate-delay="2500"
+    rotation-per-second="18deg"
+    environment-image="neutral"
+    exposure="1.05"
+    shadow-intensity="0.8"
+    shadow-softness="0.9"
+  >
+    <!-- ios-src="models/kolom_K1.usdz"  (pindahkan ke atas jika dipakai) -->
+
+    <!-- Tombol AR bawaan disembunyikan; kita pakai tombol sendiri di kartu bawah -->
+    <button slot="ar-button" style="display:none"></button>
+
+    <!-- Progress bar pemuatan -->
+    <div slot="progress-bar" class="progress" id="progress"><span></span></div>
+
+    <!-- Label hotspot dibuat otomatis oleh JavaScript berdasarkan data KOLOM -->
+  </model-viewer>
+
+  <!-- ===== Bilah atas ===== -->
+  <header class="topbar">
+    <div class="judul">
+      <b id="judul-utama">Kolom K1</b>
+      <small id="judul-sub">Visualisasi 3D &amp; AR Beton Bertulang</small>
+    </div>
+    <div class="spacer"></div>
+    <button class="ikon-btn" id="btn-label" aria-pressed="true" title="Tampilkan/sembunyikan label" aria-label="Label">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg>
+    </button>
+    <button class="ikon-btn" id="btn-reset" title="Reset kamera" aria-label="Reset kamera">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
+    </button>
+  </header>
+
+  <!-- ===== Tombol layer ===== -->
+  <nav class="layers" aria-label="Lapisan model">
+    <button class="chip" data-layer="beton" aria-pressed="true"><i style="background:var(--abu)"></i>Beton</button>
+    <button class="chip" data-layer="utama" aria-pressed="true"><i style="background:var(--merah)"></i>Tulangan Utama</button>
+    <button class="chip" data-layer="sengkang" aria-pressed="true"><i style="background:var(--biru)"></i>Sengkang</button>
+  </nav>
+
+  <!-- ===== Kartu informasi spesifikasi (diisi otomatis dari objek KOLOM) ===== -->
+  <section class="card" id="card" aria-label="Spesifikasi kolom">
+    <button class="handle" id="handle" aria-label="Buka/tutup detail"><span></span></button>
+
+    <div class="card-head">
+      <div class="badge" id="c-kode">K1</div>
+      <div>
+        <h1 id="c-tipe">Kolom K1 — 50 × 50 cm</h1>
+        <p id="c-sub">Kolom beton bertulang</p>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="item"><div class="k">Mutu Beton</div><div class="v" id="c-fc">fc' 30 MPa</div></div>
+      <div class="item"><div class="k">Mutu Baja</div><div class="v" id="c-fy">fy 420 MPa</div><div class="s" id="c-fy-s"></div></div>
+      <div class="item merah"><div class="k">Tulangan Utama</div><div class="v" id="c-tul">12-D19</div><div class="s" id="c-tul-s"></div></div>
+      <div class="item biru"><div class="k">Sengkang</div><div class="v" id="c-sk">D10-100/150</div><div class="s">tumpuan / lapangan</div></div>
+    </div>
+
+    <button class="btn-ar" id="btn-ar" hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 3 7v10l9 5 9-5V7z"/><path d="m3 7 9 5 9-5"/><path d="M12 12v10"/></svg>
+      Lihat di Ruangan Anda
+    </button>
+    <div class="info-desktop" id="info-desktop" hidden>
+      Mode AR hanya tersedia di smartphone (Android dengan ARCore atau iPhone/iPad dengan iOS 12+).
+      Pindai QR Code dengan kamera HP untuk mencobanya.
+    </div>
+
+    <button class="toggle-detail" id="toggle-detail">Lihat detail lengkap</button>
+
+    <div class="detail" id="detail">
+      <table>
+        <caption>Detail Penampang &amp; Penulangan</caption>
+        <tbody id="tabel-detail"></tbody>
+      </table>
+
+      <div class="slider">
+        <label for="opasitas">Transparansi beton <span id="opasitas-val">22%</span></label>
+        <input type="range" id="opasitas" min="0" max="80" value="22" />
+      </div>
+
+      <p class="catatan" id="catatan"></p>
+    </div>
+  </section>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <!-- ===== Layar pembuka: langsung ke kamera AR (muncul hanya di HP yang mendukung AR) ===== -->
+  <div class="layar-ar" id="layar-ar" hidden>
+    <div class="ikon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+    </div>
+    <h2 id="layar-ar-judul">Kolom K1 siap ditampilkan</h2>
+    <p>Sentuh tombol di bawah, izinkan akses kamera, lalu arahkan HP perlahan ke lantai atau meja. Kolom akan muncul di layar kamera Anda.</p>
+    <button class="mulai" id="btn-mulai-ar">Buka Kamera AR</button>
+    <button class="lewati" id="btn-lewati">Lihat model 3D &amp; spesifikasi dulu</button>
+  </div>
+
+  <script type="module">
+    /* ====================================================================
+       [3] >>> GANTI <<<  DATA SPESIFIKASI KOLOM
+       Semua teks di kartu & label 3D dihitung dari objek ini.
+       Satuan: mm untuk dimensi, MPa untuk mutu.
+       Pastikan sama dengan model .glb dan perhitungan struktur Anda.
+       ==================================================================== */
+    const KOLOM = {
+      kode: 'K1',
+      jenis: 'Kolom beton bertulang (contoh)',
+      b: 500,              // lebar penampang (mm)
+      h: 500,              // tinggi penampang (mm)
+      tinggi: 3000,        // tinggi bersih kolom (mm)
+      selimut: 40,         // selimut beton (mm)
+      fc: 30,              // mutu beton fc' (MPa)
+      fy: 420,             // mutu baja tulangan longitudinal fy (MPa)
+      kelasBaja: 'BjTS 420B (ulir)',
+      nTulangan: 12,       // jumlah tulangan utama
+      dTulangan: 19,       // diameter tulangan utama (mm)
+      dSengkang: 10,       // diameter sengkang (mm)
+      sTumpuan: 100,       // spasi sengkang di tumpuan (mm)
+      sLapangan: 150,      // spasi sengkang di lapangan (mm)
+      lo: 500,             // panjang daerah tumpuan dari muka join (mm)
+      catatan: 'Data di atas adalah contoh untuk visualisasi. Sesuaikan dengan ' +
+               'gambar kerja dan hasil perhitungan struktur proyek Anda.'
+    };
+
+    /* ====================================================================
+       [4] >>> GANTI JIKA PERLU <<<  NAMA MATERIAL DI FILE .glb
+       Harus sama persis dengan nama material saat ekspor dari Blender/Revit.
+       Cek di https://gltf-viewer.donmccurdy.com (tab "Materials") bila ragu.
+       Isi null jika material tersebut tidak ada di model Anda.
+       ==================================================================== */
+    const NAMA_MATERIAL = {
+      beton:    'M_Beton',
+      garis:    'M_Garis',            // garis tepi beton (opsional)
+      utama:    'M_Tulangan_Utama',
+      sengkang: 'M_Sengkang'
+    };
+
+    /* ====================================================================
+       [5] LANGSUNG KE KAMERA AR
+       true  = saat halaman dibuka di HP (mis. dari QR), muncul layar
+               "Buka Kamera AR" -> satu sentuhan langsung membuka kamera.
+       false = halaman langsung menampilkan model 3D + kartu spesifikasi.
+       Catatan: browser TIDAK mengizinkan kamera AR terbuka tanpa sentuhan
+       pengguna, jadi satu sentuhan ini wajib ada.
+       ==================================================================== */
+    const LANGSUNG_AR = true;
+
+    /* ---------------- Tidak perlu diubah di bawah ini ---------------- */
+    const mv = document.getElementById('mv');
+    const $ = (id) => document.getElementById(id);
+    const fmt = (x, d = 0) => x.toLocaleString('id-ID', { minimumFractionDigits: d, maximumFractionDigits: d });
+
+    // ---- Perhitungan otomatis ----
+    const luasSatu = Math.PI / 4 * KOLOM.dTulangan ** 2;        // mm²
+    const As = KOLOM.nTulangan * luasSatu;                      // mm²
+    const Ag = KOLOM.b * KOLOM.h;                               // mm²
+    const rho = As / Ag * 100;                                  // %
+    const teksTul = `${KOLOM.nTulangan}-D${KOLOM.dTulangan}`;
+    const teksSk = `D${KOLOM.dSengkang}-${KOLOM.sTumpuan}/${KOLOM.sLapangan}`;
+    const teksDim = `${fmt(KOLOM.b / 10)} × ${fmt(KOLOM.h / 10)} cm`;
+
+    // ---- Isi kartu ----
+    document.title = `WebAR Kolom ${KOLOM.kode} — ${teksDim}`;
+    $('judul-utama').textContent = `Kolom ${KOLOM.kode} · ${teksDim}`;
+    $('c-kode').textContent = KOLOM.kode;
+    $('c-tipe').textContent = `${KOLOM.kode} — ${teksDim}`;
+    $('c-sub').textContent = KOLOM.jenis;
+    $('c-fc').textContent = `fc' ${fmt(KOLOM.fc)} MPa`;
+    $('c-fy').textContent = `fy ${fmt(KOLOM.fy)} MPa`;
+    $('c-fy-s').textContent = KOLOM.kelasBaja;
+    $('c-tul').textContent = teksTul;
+    $('c-tul-s').textContent = `As = ${fmt(As)} mm² · ρ = ${fmt(rho, 2)}%`;
+    $('c-sk').textContent = teksSk;
+    $('catatan').textContent = KOLOM.catatan;
+
+    const baris = [
+      ['Dimensi penampang (b × h)', `${fmt(KOLOM.b)} × ${fmt(KOLOM.h)} mm`],
+      ['Tinggi kolom', `${fmt(KOLOM.tinggi / 1000, 2)} m`],
+      ['Selimut beton', `${fmt(KOLOM.selimut)} mm`],
+      ['Mutu beton', `fc' = ${fmt(KOLOM.fc)} MPa`],
+      ['Mutu baja', `fy = ${fmt(KOLOM.fy)} MPa`],
+      ['Tulangan utama', teksTul],
+      ['Luas 1 batang', `${fmt(luasSatu, 1)} mm²`],
+      ['Luas total (As)', `${fmt(As, 1)} mm²`],
+      ['Rasio tulangan (ρ = As/Ag)', `${fmt(rho, 2)} %`],
+      ['Sengkang tumpuan', `D${KOLOM.dSengkang}-${KOLOM.sTumpuan} (sepanjang ${fmt(KOLOM.lo)} mm)`],
+      ['Sengkang lapangan', `D${KOLOM.dSengkang}-${KOLOM.sLapangan}`],
+    ];
+    $('tabel-detail').innerHTML = baris
+      .map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('');
+
+    // ---- Label 3D (hotspot) — posisi dalam METER, titik (0,0,0) di dasar tengah kolom ----
+    const m = (mm) => (mm / 1000).toFixed(3);
+    const hx = KOLOM.b / 2, hz = KOLOM.h / 2, T = KOLOM.tinggi;
+    const HOTSPOT = [
+      { id: 'utama',    teks: `Tulangan utama ${teksTul}`,                     warna: 'var(--merah)', pos: [hx, T * 0.80, hz * 0.76], n: [1, 0, 0] },
+      { id: 'tumpuan',  teks: `Sengkang D${KOLOM.dSengkang}-${KOLOM.sTumpuan} (tumpuan)`, warna: 'var(--biru)', pos: [0, KOLOM.lo * 0.5, hz], n: [0, 0, 1] },
+      { id: 'lapangan', teks: `Sengkang D${KOLOM.dSengkang}-${KOLOM.sLapangan} (lapangan)`, warna: 'var(--biru)', pos: [0, T * 0.5, hz], n: [0, 0, 1] },
+      { id: 'penampang',teks: `Penampang ${teksDim}, selimut ${KOLOM.selimut} mm`, warna: 'var(--abu)', pos: [0, T, 0], n: [0, 1, 0] },
+    ];
+    for (const h of HOTSPOT) {
+      const el = document.createElement('button');
+      el.className = 'hotspot';
+      el.slot = `hotspot-${h.id}`;
+      el.dataset.position = h.pos.map(m).join(' ');
+      el.dataset.normal = h.n.join(' ');
+      el.style.setProperty('--warna', h.warna);
+      el.innerHTML = `<span class="label">${h.teks}</span>`;
+      el.tabIndex = -1;
+      mv.appendChild(el);
+    }
+
+    // ---- Toast ----
+    let toastTimer;
+    function toast(pesan, ms = 3500) {
+      const t = $('toast');
+      t.textContent = pesan;
+      t.classList.add('tampil');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => t.classList.remove('tampil'), ms);
+    }
+
+    // ---- Progress bar ----
+    mv.addEventListener('progress', (e) => {
+      const p = e.detail.totalProgress;
+      const bar = $('progress');
+      bar.firstElementChild.style.width = `${p * 100}%`;
+      bar.classList.toggle('selesai', p >= 1);
+    });
+
+    mv.addEventListener('error', (e) => {
+      const src = (mv.getAttribute('src') || '').slice(0, 60);
+      const sebab = e.detail?.sourceError?.message || e.detail?.type || 'tidak diketahui';
+      const lokal = location.protocol === 'file:' && !src.startsWith('data:');
+      const saran = lokal
+        ? 'Anda membuka index.html langsung dari folder. Pakai kolom_K1_standalone.html, atau jalankan "python -m http.server".'
+        : `Periksa apakah file "${src}" benar-benar ada di server (huruf besar/kecil berpengaruh).`;
+      console.error('Gagal memuat model:', src, e.detail);
+      toast(`Model 3D gagal dimuat. ${saran} [Sebab: ${sebab}]`, 15000);
+    });
+
+    // ---- Kontrol material (on/off lapisan & transparansi) ----
+    const mat = {};
+    const warnaAsli = {};
+    let opasitasBeton = 0.22;
+
+    function ambilMaterial() {
+      for (const [kunci, nama] of Object.entries(NAMA_MATERIAL)) {
+        if (!nama) continue;
+        const mm = mv.model?.getMaterialByName(nama);
+        if (mm) {
+          mat[kunci] = mm;
+          warnaAsli[kunci] = [...mm.pbrMetallicRoughness.baseColorFactor];
+        } else {
+          console.warn(`Material "${nama}" tidak ditemukan di file .glb`);
+        }
+      }
+      if (warnaAsli.beton) {
+        opasitasBeton = warnaAsli.beton[3];
+        $('opasitas').value = Math.round(opasitasBeton * 100);
+        $('opasitas-val').textContent = `${Math.round(opasitasBeton * 100)}%`;
+      }
+    }
+
+    // Material solid (tulangan): disembunyikan dengan mode MASK + alpha 0
+    function tampilSolid(kunci, tampil) {
+      const mm = mat[kunci];
+      if (!mm) return;
+      const [r, g, b] = warnaAsli[kunci];
+      if (tampil) {
+        mm.setAlphaMode('OPAQUE');
+        mm.pbrMetallicRoughness.setBaseColorFactor([r, g, b, 1]);
+      } else {
+        mm.setAlphaMode('MASK');
+        mm.setAlphaCutoff(0.5);
+        mm.pbrMetallicRoughness.setBaseColorFactor([r, g, b, 0]);
+      }
+    }
+
+    // Material beton (transparan): atur nilai alpha
+    function aturBeton(alpha) {
+      if (mat.beton) {
+        const [r, g, b] = warnaAsli.beton;
+        mat.beton.setAlphaMode('BLEND');
+        mat.beton.pbrMetallicRoughness.setBaseColorFactor([r, g, b, alpha]);
+      }
+      tampilSolid('garis', alpha > 0.001);
+    }
+
+    mv.addEventListener('load', () => {
+      ambilMaterial();
+      // Tombol AR hanya muncul bila perangkat mendukung
+      if (mv.canActivateAR) {
+        $('btn-ar').hidden = false;
+        if (LANGSUNG_AR && !sudahTampilLayarAR) {
+          sudahTampilLayarAR = true;
+          $('layar-ar-judul').textContent = `Kolom ${KOLOM.kode} siap ditampilkan`;
+          $('layar-ar').hidden = false;
+        }
+      } else {
+        $('info-desktop').hidden = false;
+      }
+    });
+
+    document.querySelectorAll('.chip').forEach((chip) => {
+      chip.addEventListener('click', () => {
+        const aktif = chip.getAttribute('aria-pressed') !== 'true';
+        chip.setAttribute('aria-pressed', String(aktif));
+        const layer = chip.dataset.layer;
+        if (layer === 'beton') aturBeton(aktif ? Math.max(opasitasBeton, 0.05) : 0);
+        else tampilSolid(layer, aktif);
+      });
+    });
+
+    $('opasitas').addEventListener('input', (e) => {
+      opasitasBeton = e.target.value / 100;
+      $('opasitas-val').textContent = `${e.target.value}%`;
+      const chip = document.querySelector('.chip[data-layer="beton"]');
+      chip.setAttribute('aria-pressed', String(opasitasBeton > 0));
+      aturBeton(opasitasBeton);
+    });
+
+    // ---- Tombol AR ----
+    let sudahTampilLayarAR = false;
+    $('btn-ar').addEventListener('click', () => mv.activateAR());
+    $('btn-mulai-ar').addEventListener('click', () => {
+      $('layar-ar').hidden = true;   // setelah keluar dari AR, pengguna kembali ke tampilan 3D
+      mv.activateAR();
+    });
+    $('btn-lewati').addEventListener('click', () => { $('layar-ar').hidden = true; });
+
+    mv.addEventListener('ar-status', (e) => {
+      if (e.detail.status === 'failed') {
+        toast('AR tidak dapat dibuka di perangkat ini. Pastikan memakai Chrome (Android) atau Safari (iPhone).', 6000);
+      }
+    });
+
+    // ---- Label & reset kamera ----
+    $('btn-label').addEventListener('click', (e) => {
+      const btn = e.currentTarget;
+      const aktif = btn.getAttribute('aria-pressed') !== 'true';
+      btn.setAttribute('aria-pressed', String(aktif));
+      mv.classList.toggle('tanpa-label', !aktif);
+    });
+
+    $('btn-reset').addEventListener('click', () => {
+      mv.cameraOrbit = '35deg 72deg auto';
+      mv.cameraTarget = 'auto auto auto';
+      mv.fieldOfView = 'auto';
+      mv.jumpCameraToGoal();
+    });
+
+    // ---- Buka/tutup detail kartu ----
+    function toggleDetail() {
+      const card = $('card');
+      const buka = card.classList.toggle('buka');
+      $('toggle-detail').textContent = buka ? 'Sembunyikan detail' : 'Lihat detail lengkap';
+      if (buka) $('detail').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+    $('toggle-detail').addEventListener('click', toggleDetail);
+    $('handle').addEventListener('click', toggleDetail);
+
+    // Ukur tinggi kartu saat tertutup agar area 3D tidak tertutup kartu
+    // (ditunda ke frame berikutnya agar tidak memicu "ResizeObserver loop" error)
+    let tinggiTerakhir = 0;
+    new ResizeObserver(() => {
+      requestAnimationFrame(() => {
+        const card = $('card');
+        if (card.classList.contains('buka')) return;
+        const h = card.offsetHeight;
+        if (h && h !== tinggiTerakhir) {
+          tinggiTerakhir = h;
+          document.documentElement.style.setProperty('--card-h', `${h}px`);
+        }
+      });
+    }).observe($('card'));
+  </script>
+</body>
+</html>
